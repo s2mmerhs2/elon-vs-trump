@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>FIGHT</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; width: 100%; overflow: hidden; }
+
+  .arena {
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(90deg, #0033ff 0%, #0033ff 30%, #cc0000 70%, #cc0000 100%);
+    display: flex;
+    align-items: stretch;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .score-area {
+    display: flex;
+    width: 100%;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 20px 24px 0;
+    position: absolute;
+    top: 0; left: 0;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .score {
+    font-family: 'Arial Black', Impact, sans-serif;
+    font-weight: 900;
+    line-height: 1;
+    color: #fff;
+    transition: font-size 0.2s ease, opacity 0.2s ease;
+    user-select: none;
+  }
+  .score.leading  { font-size: 15vw; opacity: 1; text-shadow: 0 0 28px rgba(255,255,255,0.55), 0 4px 14px rgba(0,0,0,0.5); }
+  .score.trailing { font-size: 8vw;  opacity: 0.42; }
+  .score.tied     { font-size: 11vw; opacity: 1; }
+
+  .fighter-zone {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+  }
+
+  .fighter-img-wrap {
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .fighter-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center center;
+    pointer-events: none;
+    display: block;
+  }
+
+  .fighter-img-wrap.shake {
+    animation: shake 0.4s ease;
+  }
+
+  @keyframes shake {
+    0%  { transform: translateX(0) rotate(0deg); }
+    15% { transform: translateX(-12px) rotate(-5deg); }
+    30% { transform: translateX(12px) rotate(5deg); }
+    45% { transform: translateX(-9px) rotate(-3deg); }
+    60% { transform: translateX(9px) rotate(3deg); }
+    75% { transform: translateX(-4px) rotate(-1deg); }
+    100%{ transform: translateX(0) rotate(0deg); }
+  }
+
+  .hit-effects {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none; z-index: 100;
+  }
+  .effect {
+    position: absolute;
+    font-family: 'Arial Black', sans-serif;
+    font-size: 36px; font-weight: 900;
+    color: #FFD700;
+    text-shadow: 2px 2px 0 #000, -2px -2px 0 #000;
+    animation: popEffect 0.65s ease forwards;
+    pointer-events: none;
+  }
+  @keyframes popEffect {
+    0%  { transform: scale(0.3) rotate(-15deg); opacity: 1; }
+    40% { transform: scale(1.5) rotate(6deg);   opacity: 1; }
+    70% { transform: scale(1.1) rotate(-2deg);  opacity: 0.9; }
+    100%{ transform: scale(0.7) translateY(-50px); opacity: 0; }
+  }
+
+  .combo-flash {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(255,255,220,0.3);
+    pointer-events: none; z-index: 50;
+    animation: flashAnim 0.2s ease forwards;
+  }
+  @keyframes flashAnim { 0%{ opacity:1; } 100%{ opacity:0; } }
+</style>
+</head>
+<body>
+
+<div class="arena">
+  <div class="score-area">
+    <div class="score tied" id="elon-score">0</div>
+    <div class="score tied" id="trump-score">0</div>
+  </div>
+
+  <!-- 일론 탭 → 일론 아파함 → 트럼프 점수 +1 -->
+  <div class="fighter-zone" id="elon-zone" onclick="hitElon(event)">
+    <div class="fighter-img-wrap" id="elon-wrap">
+      <img class="fighter-img" id="elon-img" src="E_basic.png" alt="" />
+    </div>
+  </div>
+
+  <!-- 트럼프 탭 → 트럼프 아파함 → 일론 점수 +1 -->
+  <div class="fighter-zone" id="trump-zone" onclick="hitTrump(event)">
+    <div class="fighter-img-wrap" id="trump-wrap">
+      <img class="fighter-img" id="trump-img" src="T_basic.png" alt="" />
+    </div>
+  </div>
+
+  <div class="hit-effects" id="effects-container"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
+import { getFirestore, doc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCbLqwh8fV-5c1Wp9cqj6SlTAoxLKQTSZ8",
+  authDomain: "elon-vs-trump.firebaseapp.com",
+  projectId: "elon-vs-trump",
+  storageBucket: "elon-vs-trump.firebasestorage.app",
+  messagingSenderId: "112778753640",
+  appId: "1:112778753640:web:3a055fa5eda5fec137eddd",
+  measurementId: "G-WQ6H04HXGJ"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const scoresRef = doc(db, "scores", "main");
+
+const hitWords = ['POW!','BAM!','ZAP!','WHAM!','BOOM!','CRACK!','💥','😵','🔥'];
+const elonImgs = {
+  basic: 'E_basic.png', punch: 'E_punch.png',
+  sick: ['E_sick1.png','E_sick2.png','E_sick3.png']
+};
+const trumpImgs = {
+  basic: 'T_basic.png', punch: 'T_punch.png',
+  sick: ['T_sick1.png','T_sick2.png','T_sick3.png']
+};
+
+let audioCtx = null;
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+// 퍽 소리
+function playPunchSound() {
+  try {
+    const ctx = getCtx();
+    const now = ctx.currentTime;
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.12, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 3);
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 400;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(1.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    src.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+    src.start(now);
+  } catch(e) {}
+}
+
+// TTS - 클릭 즉시 이전 큐 취소 후 새 소리만 재생
+const painWords = ['ugh', 'ouch', 'ow', 'argh', 'oof'];
+let voicesLoaded = false;
+
+function initTTS() {
+  if (voicesLoaded) return;
+  window.speechSynthesis.getVoices();
+  voicesLoaded = true;
+}
+
+function playPainTTS() {
+  try {
+    // 이전 TTS 큐 즉시 취소
+    window.speechSynthesis.cancel();
+
+    const word = painWords[Math.floor(Math.random() * painWords.length)];
+    const utt = new SpeechSynthesisUtterance(word);
+    utt.rate = 0.65 + Math.random() * 0.45;
+    utt.pitch = 0.4 + Math.random() * 0.7;
+    utt.volume = 1;
+    const voices = window.speechSynthesis.getVoices();
+    const maleVoice = voices.find(v => v.lang.startsWith('en') && /male|david|mark|daniel/i.test(v.name));
+    if (maleVoice) utt.voice = maleVoice;
+    window.speechSynthesis.speak(utt);
+  } catch(e) {}
+}
+
+function updateUI(es, ts) {
+  const eEl = document.getElementById('elon-score');
+  const tEl = document.getElementById('trump-score');
+  eEl.textContent = es;
+  tEl.textContent = ts;
+  if (es === ts) {
+    eEl.className = 'score tied'; tEl.className = 'score tied';
+  } else if (es > ts) {
+    eEl.className = 'score leading'; tEl.className = 'score trailing';
+  } else {
+    eEl.className = 'score trailing'; tEl.className = 'score leading';
+  }
+}
+
+onSnapshot(scoresRef, (snap) => {
+  if (snap.exists()) {
+    const d = snap.data();
+    updateUI(d.elon || 0, d.trump || 0);
+  }
+});
+
+function showImg(who, type) {
+  const imgs = who === 'elon' ? elonImgs : trumpImgs;
+  const el = document.getElementById(who + '-img');
+  if (type === 'punch') {
+    el.src = imgs.punch;
+    setTimeout(() => { el.src = imgs.basic; }, 300);
+  } else {
+    el.src = imgs.sick[Math.floor(Math.random() * imgs.sick.length)];
+    setTimeout(() => { el.src = imgs.basic; }, 500);
+  }
+}
+
+function animateShake(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('shake');
+  void el.offsetWidth;
+  el.classList.add('shake');
+  setTimeout(() => el.classList.remove('shake'), 500);
+}
+
+function spawnEffect(x, y) {
+  const el = document.createElement('div');
+  el.className = 'effect';
+  el.textContent = hitWords[Math.floor(Math.random() * hitWords.length)];
+  el.style.left = (x - 24) + 'px';
+  el.style.top  = (y - 24) + 'px';
+  document.getElementById('effects-container').appendChild(el);
+  setTimeout(() => el.remove(), 700);
+}
+
+function flashScreen() {
+  const el = document.createElement('div');
+  el.className = 'combo-flash';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 250);
+}
+
+async function incrementScore(field) {
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(scoresRef);
+    const data = snap.exists() ? snap.data() : { elon: 0, trump: 0 };
+    data[field] = (data[field] || 0) + 1;
+    tx.set(scoresRef, data);
+    if (data[field] % 100 === 0) flashScreen();
+  });
+}
+
+window.hitElon = function(e) {
+  initTTS();
+  showImg('elon', 'sick');
+  showImg('trump', 'punch');
+  animateShake('elon-wrap');
+  playPunchSound();
+  playPainTTS();
+  spawnEffect(e.clientX || 80, e.clientY || 300);
+  incrementScore('trump');
+};
+
+window.hitTrump = function(e) {
+  initTTS();
+  showImg('trump', 'sick');
+  showImg('elon', 'punch');
+  animateShake('trump-wrap');
+  playPunchSound();
+  playPainTTS();
+  spawnEffect(e.clientX || (window.innerWidth - 80), e.clientY || 300);
+  incrementScore('elon');
+};
+</script>
+</body>
+</html>
