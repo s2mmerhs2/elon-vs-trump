@@ -142,7 +142,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
-import { getFirestore, doc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
+import { getFirestore, doc, onSnapshot, updateDoc, setDoc, increment, getDoc } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCbLqwh8fV-5c1Wp9cqj6SlTAoxLKQTSZ8",
@@ -283,13 +283,13 @@ function flashScreen() {
 }
 
 async function incrementScore(field) {
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(scoresRef);
-    const data = snap.exists() ? snap.data() : { elon: 0, trump: 0 };
-    data[field] = (data[field] || 0) + 1;
-    tx.set(scoresRef, data);
-    if (data[field] % 100 === 0) flashScreen();
-  });
+  try {
+    await updateDoc(scoresRef, { [field]: increment(1) });
+  } catch(e) {
+    // 문서 없으면 새로 생성
+    await setDoc(scoresRef, { elon: 0, trump: 0 });
+    await updateDoc(scoresRef, { [field]: increment(1) });
+  }
 }
 
 window.hitElon = function(e) {
